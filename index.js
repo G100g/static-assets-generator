@@ -10,6 +10,8 @@ const path = require('path');
 const fs = require('fs');
 const fse = require('fs-extra');
 
+const mame2json = require('mame2json');
+
 const DEST_DIR = path.resolve(process.cwd(), 'dist');
 
 function writeMainIndex(games) {
@@ -82,36 +84,42 @@ var fetchGameInfos = function (game) {
                             .then(writeGameFile.bind(null, game));
 }
 
-const mame2json = require('mame2json');
 
-mame2json.binary('mame64');
+module.exports = function (filter) {
 
-mame2json.listFull()
-    .then(games => {    
-        
-        let gameKeys = Object.keys(games)
-            .filter(game => game.startsWith('wboy')) // limit for debug
+    mame2json.binary('mame64');
 
-        console.log('# ' + info('Total games ') + infoW(gameKeys.length) + "\n");
+    return mame2json.listFull()
+        .then(games => {    
+            
+            let ll = co.wrap(function* (games) {
+                let gameKeys = Object.keys(games)
+                    .filter(game => filter ? game.startsWith(filter): true)
 
-        let gameFilesCreated = 0;
+                console.log('# ' + info('Total games ') + infoW(gameKeys.length) + "\n");
 
-        let ll = co.wrap(function* (games) {
+                var mainIndex = yield writeMainIndex(games);
 
-            var mainIndex = yield writeMainIndex(games);
+                let gameFilesCreated = yield writeGamesFile(gameKeys);    
 
-            gameFilesCreated = yield writeGamesFile(gameKeys);    
+                return {
+                    gameKeys,
+                    gameFilesCreated,
+                };
 
-            return mainIndex;
-
-        });
-
-        ll(games)
-            .then(() => {
-                console.log('  # ' + info(`Created ${infoW(gameFilesCreated.length)} games of ${infoW(gameKeys.length)}`));
             });
 
-    })
-    .catch(e => {
-        console.error(e);
-    });
+            return ll(games)
+                .then((result) => {
+                    console.log('  # ' + info(`Created ${infoW(result.gameFilesCreated.length)} games of ${infoW(result.gameKeys.length)}`));
+
+                    return result;
+                });
+
+        })
+        .catch(e => {
+            console.error(e);
+        });
+
+
+};
